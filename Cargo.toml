@@ -4,5 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-iced = { git = "https://github.com/iced-rs/iced.git", rev = "refs/tags/text-editor"}
-
+iced = { git = "https://github.com/iced-rs/iced.git", rev = "refs/tags/text-editor", features = ["debug"]}
+chardetng = "0.1" 
+encoding_rs = "0.8"
+tokio = { version = "1.40.0", features = ["fs"]}
+rfd = "0.15"
+serde = { version = "1.0.210", features = ["derive"] }
+serde_json = "1.0.48"
