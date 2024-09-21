@@ -36,6 +36,7 @@ struct TextEditor{
 enum EditorMessage {
     Edit(text_editor::Action),
     Open,
+    New,
     Save,
     SaveAs,
     FileOpened(Result<(Arc<String>, String), Error>),
@@ -109,6 +110,11 @@ impl Application for TextEditor {
             EditorMessage::SaveAs => {
                 return Command::perform(save_file_as_dialog(self.content.text().to_string()), EditorMessage::FileSaved);
             },
+
+            EditorMessage::New => {
+                // TODO
+                Command::none()
+            }
             
         }
 
@@ -131,6 +137,10 @@ impl Application for TextEditor {
             text(format!("{}", encoding.name()))
         };
 
+        // Context Buttons
+        let new_button = button("New")
+            .on_press(EditorMessage::New);
+
         let save_button = button("Save")
             .on_press(EditorMessage::Save);   
     
@@ -141,12 +151,15 @@ impl Application for TextEditor {
             .on_press(EditorMessage::Open);
 
         let controls = row![
+            new_button,
             open_button,
             save_button,
             save_as_button
 
         ].spacing(10);
+        // Context Buttons
 
+        // Status Bar
         let status_bar_left = row![current_file].spacing(10);
         let status_bar_right = row![encoding_type, position].spacing(10);
 
@@ -154,6 +167,7 @@ impl Application for TextEditor {
         container(column![controls, input, status_bar].spacing(10))
             .padding(10)
             .into()
+        // Status Bar
     }
 
     fn theme(&self) -> Theme {
