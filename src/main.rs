@@ -14,9 +14,15 @@ use handlers::file_handler::{Error, pick_file, save_file, save_file_as_dialog};
 use encoding::encoding_detector;
 
 
-
 fn main() -> iced::Result {
-    return TextEditor::run(Settings::default());
+    return TextEditor::run(Settings{
+        window: iced::window::Settings{
+            size: (1280, 720),
+            position: iced::window::Position::Centered,
+            ..iced::window::Settings::default()
+        },
+        ..Settings::default()
+    });
 }
 
 #[derive(Default)]
@@ -27,7 +33,7 @@ struct TextEditor{
 }
 
 #[derive(Debug, Clone)]
-enum Message {
+enum EditorMessage {
     Edit(text_editor::Action),
     Open,
     Save,
@@ -36,14 +42,15 @@ enum Message {
     FileSaved(Result<(), Error>),
 }
 
+
 impl Application for TextEditor {
 
-    type Message = Message;
+    type Message = EditorMessage;
     type Theme = Theme;
     type Executor = executor::Default;
     type Flags = ();
 
-    fn new(_flags: Self::Flags) -> (Self, Command<Message>) {
+    fn new(_flags: Self::Flags) -> (Self, Command<EditorMessage>) {
         (
             Self{
                 content: text_editor::Content::new(),
@@ -60,14 +67,14 @@ impl Application for TextEditor {
         String::from("Simple text editor in Rust")
     }
 
-    fn update(&mut self, message: Message) -> Command<Message> {
+    fn update(&mut self, message: EditorMessage) -> Command<EditorMessage> {
         match message {
-            Message::Edit(action) => {
+            EditorMessage::Edit(action) => {
                 self.content.edit(action);
                 Command::none()
             },
             // Handle the file opening
-            Message::FileOpened(result) => {
+            EditorMessage::FileOpened(result) => {
                 match result {
                     Ok(text) => {
                         self.content = text_editor::Content::with(&text.0);
@@ -80,7 +87,7 @@ impl Application for TextEditor {
                 Command::none()
             },
             
-            Message::FileSaved(result) => {
+            EditorMessage::FileSaved(result) => {
                 match result {
                     Ok(_) => {},
                     Err(error) => {
@@ -90,26 +97,26 @@ impl Application for TextEditor {
                 Command::none()
             },
             
-            Message::Open => {
-                return Command::perform(pick_file(), Message::FileOpened);
+            EditorMessage::Open => {
+                return Command::perform(pick_file(), EditorMessage::FileOpened);
             },
-            Message::Save => {
+            EditorMessage::Save => {
                 let path = self.opened_file.clone();
                 let content = self.content.text().to_string();
-                return Command::perform(save_file(path, content), Message::FileSaved);
+                return Command::perform(save_file(path, content), EditorMessage::FileSaved);
             },
 
-            Message::SaveAs => {
-                return Command::perform(save_file_as_dialog(self.content.text().to_string()), Message::FileSaved);
+            EditorMessage::SaveAs => {
+                return Command::perform(save_file_as_dialog(self.content.text().to_string()), EditorMessage::FileSaved);
             },
             
         }
 
     }
 
-    fn view(&self) -> Element<'_, Message> {
+    fn view(&self) -> Element<'_, EditorMessage> {
         let input = text_editor(&self.content)
-            .on_edit(Message::Edit);
+            .on_edit(EditorMessage::Edit);
 
         let position = {
             let (line, column) = self.content.cursor_position();
@@ -124,15 +131,19 @@ impl Application for TextEditor {
             text(format!("{}", encoding.name()))
         };
 
+        let save_button = button("Save")
+            .on_press(EditorMessage::Save);   
+    
+        let save_as_button = button("Save As")
+            .on_press(EditorMessage::SaveAs);
+
+        let open_button = button("Open")
+            .on_press(EditorMessage::Open);
+
         let controls = row![
-            button("Open")
-                .on_press(Message::Open)    
-            ,
-            button("Save")
-                .on_press(Message::Save)
-            ,
-            button("Save As")
-                .on_press(Message::SaveAs)
+            open_button,
+            save_button,
+            save_as_button
 
         ].spacing(10);
 
