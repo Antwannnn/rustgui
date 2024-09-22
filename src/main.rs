@@ -18,14 +18,15 @@ use iced::{ Element, Length, Application, Settings, Theme, Command };
 use handlers::file_handler::{Error, pick_file, save_file};
 use encoding::encoding_detector;
 use messages::EditorMessage;
+use iced::keyboard;
 use iced::theme;
 use iced::highlighter::{self, Highlighter};
 
 
 fn main() -> iced::Result {
     return TextEditor::run(Settings{
-        default_font: Font::MONOSPACE,
-        default_text_size: iced::Pixels(14.0),
+        default_font: Font::DEFAULT,
+        default_text_size: iced::Pixels(17.0),
         fonts: vec![include_bytes!("../fonts/context-icons.ttf").as_slice().into()],
         window: iced::window::Settings{
             size: (1280, 720),
@@ -39,7 +40,7 @@ fn main() -> iced::Result {
 struct TextEditor{
     content: text_editor::Content,
     path: Option<PathBuf>,
-    modified: bool,
+    is_dirty: bool,
     theme: highlighter::Theme,
     error: Option<Error>,
 }
@@ -56,7 +57,7 @@ impl Application for TextEditor {
         (
             Self{
                 content: text_editor::Content::new(),
-                modified: false,
+                is_dirty: true,
                 path: None,
                 theme: highlighter::Theme::SolarizedDark,
                 error: None,
@@ -74,9 +75,7 @@ impl Application for TextEditor {
     fn update(&mut self, message: EditorMessage) -> Command<EditorMessage> {
         match message {
             EditorMessage::Edit(action) => {
-                if self.modified == false {
-                    self.modified = true;
-                }
+                self.is_dirty = self.is_dirty || action.is_edit();
                 self.content.edit(action);
                 self.error = None;
                 Command::none()
@@ -84,7 +83,7 @@ impl Application for TextEditor {
 
             EditorMessage::New => {
                 self.content = text_editor::Content::new();
-                self.modified = false;
+                self.is_dirty = true;
                 self.path = None;
                 Command::none()
             },
@@ -98,6 +97,7 @@ impl Application for TextEditor {
                     Ok(text) => {
                         self.content = text_editor::Content::with(&text.0);
                         self.path = text.1;
+                        self.is_dirty = false;
                     },
                     Err(error) => {
                         self.error = Some(error);
@@ -115,6 +115,7 @@ impl Application for TextEditor {
                 match result {
                     Ok(path) => {
                         self.path = Some(path);
+                        self.is_dirty = false;
                     },
                     Err(error) => {
                         self.error = Some(error);
@@ -133,7 +134,29 @@ impl Application for TextEditor {
 
     }
 
+    fn subscription(&self) -> iced::Subscription<Self::Message> {
+        keyboard::on_key_press(|key_code, modifiers|{
+            if modifiers.command() {
+                match key_code {
+                    keyboard::KeyCode::S => {
+                        return Some(EditorMessage::Save);
+                    },
+                    keyboard::KeyCode::O => {
+                        return Some(EditorMessage::Open);
+                    },
+                    keyboard::KeyCode::N => {
+                        return Some(EditorMessage::New);
+                    },
+                    _ => {}
+                }
+            }
+            None
+        })
+    }
+
     fn view(&self) -> Element<'_, EditorMessage> {
+
+        
 
         let input = text_editor(&self.content)
             .on_edit(EditorMessage::Edit)
@@ -143,15 +166,14 @@ impl Application for TextEditor {
             }, |highlight, _theme|{
                 highlight.to_format()
             });
-
         
         let controls = row![
             // New button
-            action(icon(UIFonts::ContextIcons, '\u{E800}'), "Create a new file", EditorMessage::New),
+            action(icon(UIFonts::ContextIcons, '\u{E800}'), "Create a new file", Some(EditorMessage::New)),
             // Save button
-            action(icon(UIFonts::ContextIcons, '\u{E801}'), "Save the current file", EditorMessage::Save),
+            action(icon(UIFonts::ContextIcons, '\u{E801}'), "Save the current file", self.is_dirty.then_some(EditorMessage::Save)),
             // Open button
-            action(icon(UIFonts::ContextIcons, '\u{F115}'), "Open an existing file", EditorMessage::Open),
+            action(icon(UIFonts::ContextIcons, '\u{F115}'), "Open an existing file", Some(EditorMessage::Open)),
             horizontal_space(Length::Fill),
             pick_list(
                 &highlighter::Theme::ALL[..],
@@ -192,18 +214,31 @@ impl Application for TextEditor {
     }
 
     fn theme(&self) -> Theme {
-        Theme::Dark
+        if self.theme.is_dark(){
+            return Theme::Dark;
+        } else{
+            return Theme::Light;
+        }
     }
 }
 
-fn action<'a>(content: Element<'a, EditorMessage>, label: &str, on_press: EditorMessage) -> Element<'a, EditorMessage> {
+fn action<'a>(content: Element<'a, EditorMessage>, label: &str, on_press: Option<EditorMessage>) -> Element<'a, EditorMessage> {
+    let is_disabled = on_press.is_none();
     tooltip(button(container(content)
         .width(30)
-        .center_x()
-
-        )
-    .on_press(on_press)        
+        .center_x())
+    .on_press_maybe(on_press)
+    .style(
+        if is_disabled {
+            theme::Button::Secondary
+        } else {
+            theme::Button::Primary
+        }
+    )        
     .padding([5,7]), label, tooltip::Position::FollowCursor)
     .style(theme::Container::Box)
     .into()
 }
+
+
+
