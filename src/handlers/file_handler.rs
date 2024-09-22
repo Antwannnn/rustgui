@@ -13,7 +13,7 @@ pub enum Error {
     IO(ErrorKind)
 }
 
-pub async fn pick_file() -> Result<(Arc<String>, String), Error> {
+pub async fn pick_file() -> Result<(Arc<String>, Option<PathBuf>), Error> {
     let file_picker_handle = rfd::AsyncFileDialog::new()
         .set_title("Choose a text file to open in the editor")
         .pick_file()
@@ -23,9 +23,8 @@ pub async fn pick_file() -> Result<(Arc<String>, String), Error> {
     let loaded_file = load_file(file_picker_handle.path()).await?;
 
     let path_buffer: PathBuf = file_picker_handle.path().into();
-    let file_path = path_buffer.to_str().unwrap().to_string();
 
-    Ok((loaded_file, file_path))
+    Ok((loaded_file, path_buffer.into()))
 }
 
 pub async fn save_file_as_dialog(content: String) -> Result<(), Error> {

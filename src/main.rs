@@ -6,6 +6,7 @@ pub mod handlers{
     pub mod file_handler;
 }
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use iced::executor;
 use iced::widget::{button, column, container, horizontal_space, row, text, text_editor};
@@ -28,7 +29,7 @@ fn main() -> iced::Result {
 #[derive(Default)]
 struct TextEditor{
     content: text_editor::Content,
-    opened_file: String,
+    opened_file: Option<PathBuf>,
     error: Option<Error>,
 }
 
@@ -39,7 +40,7 @@ enum EditorMessage {
     New,
     Save,
     SaveAs,
-    FileOpened(Result<(Arc<String>, String), Error>),
+    FileOpened(Result<(Arc<String>, Option<PathBuf>), Error>),
     FileSaved(Result<(), Error>),
 }
 
@@ -55,7 +56,7 @@ impl Application for TextEditor {
         (
             Self{
                 content: text_editor::Content::new(),
-                opened_file: String::new(),
+                opened_file: None,
                 error: None,
             }, 
 
@@ -104,7 +105,7 @@ impl Application for TextEditor {
             EditorMessage::Save => {
                 let path = self.opened_file.clone();
                 let content = self.content.text().to_string();
-                return Command::perform(save_file(path, content), EditorMessage::FileSaved);
+                return Command::perform(save_file(path.unwrap(), content), EditorMessage::FileSaved);
             },
 
             EditorMessage::SaveAs => {
@@ -112,7 +113,8 @@ impl Application for TextEditor {
             },
 
             EditorMessage::New => {
-                // TODO
+
+                self.content = text_editor::Content::new();
                 Command::none()
             }
             
@@ -130,7 +132,7 @@ impl Application for TextEditor {
             text(format!("Ln: {}, Col: {}", line + 1, column + 1))
         };
 
-        let current_file = text(format!("{}", self.opened_file));
+        let current_file = text(format!("{}", self.opened_file.as_ref().map_or("New File".to_string(), |path| path.display().to_string())));
 
         let encoding_type = {
             let encoding = encoding_detector::detect_encoding(self.content.text().as_bytes());
