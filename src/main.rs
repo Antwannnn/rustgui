@@ -6,10 +6,10 @@ pub mod handlers{
     pub mod file_handler;
 }
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use iced::executor;
-use iced::widget::{button, column, container, horizontal_space, row, text, text_editor};
+use iced::widget::{button, column, container, horizontal_space, row, text, text_editor, Row};
 use iced::{ Element, Length, Application, Settings, Theme, Command };
 use handlers::file_handler::{Error, pick_file, save_file, save_file_as_dialog};
 use encoding::encoding_detector;
@@ -30,6 +30,7 @@ fn main() -> iced::Result {
 struct TextEditor{
     content: text_editor::Content,
     opened_file: Option<PathBuf>,
+    modified : bool,
     error: Option<Error>,
 }
 
@@ -56,6 +57,7 @@ impl Application for TextEditor {
         (
             Self{
                 content: text_editor::Content::new(),
+                modified: false,
                 opened_file: None,
                 error: None,
             }, 
@@ -72,7 +74,11 @@ impl Application for TextEditor {
     fn update(&mut self, message: EditorMessage) -> Command<EditorMessage> {
         match message {
             EditorMessage::Edit(action) => {
+                if self.modified == false {
+                    self.modified = true;
+                }
                 self.content.edit(action);
+                self.error = None;
                 Command::none()
             },
             // Handle the file opening
@@ -98,6 +104,7 @@ impl Application for TextEditor {
                 }
                 Command::none()
             },
+
             
             EditorMessage::Open => {
                 return Command::perform(pick_file(), EditorMessage::FileOpened);
@@ -113,63 +120,63 @@ impl Application for TextEditor {
             },
 
             EditorMessage::New => {
-
                 self.content = text_editor::Content::new();
+                self.modified = false;
+                self.opened_file = None;
                 Command::none()
-            }
+            },
+            
             
         }
 
     }
 
     fn view(&self) -> Element<'_, EditorMessage> {
+
         let input = text_editor(&self.content)
             .on_edit(EditorMessage::Edit);
 
-        let position = {
-            let (line, column) = self.content.cursor_position();
-
-            text(format!("Ln: {}, Col: {}", line + 1, column + 1))
-        };
-
-        let current_file = text(format!("{}", self.opened_file.as_ref().map_or("New File".to_string(), |path| path.display().to_string())));
-
-        let encoding_type = {
-            let encoding = encoding_detector::detect_encoding(self.content.text().as_bytes());
-            text(format!("{}", encoding.name()))
-        };
-
-        // Context Buttons
-        let new_button = button("New")
-            .on_press(EditorMessage::New);
-
-        let save_button = button("Save")
-            .on_press(EditorMessage::Save);   
-    
-        let save_as_button = button("Save As")
-            .on_press(EditorMessage::SaveAs);
-
-        let open_button = button("Open")
-            .on_press(EditorMessage::Open);
-
+        
         let controls = row![
-            new_button,
-            open_button,
-            save_button,
-            save_as_button
-
+            button("New")
+                .on_press(EditorMessage::New),
+            button("Open")
+                .on_press(EditorMessage::Open),
+            button("Save")
+                .on_press(EditorMessage::Save),
+            button("Save As")
+                .on_press(EditorMessage::SaveAs)
+    
         ].spacing(10);
-        // Context Buttons
 
-        // Status Bar
-        let status_bar_left = row![current_file].spacing(10);
-        let status_bar_right = row![encoding_type, position].spacing(10);
+        let status_bar = {
 
-        let status_bar = row![status_bar_left, horizontal_space(Length::Fill), status_bar_right];
+            let status = if let Some(error) = self.error.as_ref() {
+                text(format!("Error: {:?}", error))
+            } else {
+                match self.opened_file.as_deref().and_then(Path::to_str) {
+                    Some(file) => text(format!("Editing: {}", file)),
+                    None => text("New File"),
+                }
+            };   
+
+    
+            let encoding_type = {
+                let encoding = encoding_detector::detect_encoding(self.content.text().as_bytes());
+                text(format!("{}", encoding.name()))
+            };
+
+            let position = {
+                let (line, column) = self.content.cursor_position();
+    
+                text(format!("Ln: {}, Col: {}", line + 1, column + 1))
+            };
+            
+            row![status, horizontal_space(Length::Fill), row![encoding_type, position].spacing(10)]
+        };
         container(column![controls, input, status_bar].spacing(10))
             .padding(10)
             .into()
-        // Status Bar
     }
 
     fn theme(&self) -> Theme {
