@@ -6,17 +6,27 @@ pub mod handlers{
     pub mod file_handler;
 }
 
+pub mod ui{pub mod fonts;}
+
+mod messages;
+
+use ui::fonts::{UIFonts, icon};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use iced::executor;
-use iced::widget::{button, column, container, horizontal_space, row, text, text_editor, Row};
+use iced::{executor, Font};
+use iced::widget::{pick_list, button, column, container, horizontal_space, row, text, text_editor, tooltip};
 use iced::{ Element, Length, Application, Settings, Theme, Command };
-use handlers::file_handler::{Error, pick_file, save_file, save_file_as_dialog};
+use handlers::file_handler::{Error, pick_file, save_file};
 use encoding::encoding_detector;
+use messages::EditorMessage;
+use iced::theme;
+use iced::highlighter::{self, Highlighter};
 
 
 fn main() -> iced::Result {
     return TextEditor::run(Settings{
+        default_font: Font::MONOSPACE,
+        default_text_size: iced::Pixels(14.0),
+        fonts: vec![include_bytes!("../fonts/context-icons.ttf").as_slice().into()],
         window: iced::window::Settings{
             size: (1280, 720),
             position: iced::window::Position::Centered,
@@ -26,23 +36,12 @@ fn main() -> iced::Result {
     });
 }
 
-#[derive(Default)]
 struct TextEditor{
     content: text_editor::Content,
-    opened_file: Option<PathBuf>,
-    modified : bool,
+    path: Option<PathBuf>,
+    modified: bool,
+    theme: highlighter::Theme,
     error: Option<Error>,
-}
-
-#[derive(Debug, Clone)]
-enum EditorMessage {
-    Edit(text_editor::Action),
-    Open,
-    New,
-    Save,
-    SaveAs,
-    FileOpened(Result<(Arc<String>, Option<PathBuf>), Error>),
-    FileSaved(Result<(), Error>),
 }
 
 
@@ -58,7 +57,8 @@ impl Application for TextEditor {
             Self{
                 content: text_editor::Content::new(),
                 modified: false,
-                opened_file: None,
+                path: None,
+                theme: highlighter::Theme::SolarizedDark,
                 error: None,
             }, 
 
@@ -81,12 +81,23 @@ impl Application for TextEditor {
                 self.error = None;
                 Command::none()
             },
+
+            EditorMessage::New => {
+                self.content = text_editor::Content::new();
+                self.modified = false;
+                self.path = None;
+                Command::none()
+            },
+
+            EditorMessage::Open => {
+                return Command::perform(pick_file(), EditorMessage::FileOpened);
+            },
             // Handle the file opening
             EditorMessage::FileOpened(result) => {
                 match result {
                     Ok(text) => {
                         self.content = text_editor::Content::with(&text.0);
-                        self.opened_file = text.1;
+                        self.path = text.1;
                     },
                     Err(error) => {
                         self.error = Some(error);
@@ -94,10 +105,17 @@ impl Application for TextEditor {
                 }
                 Command::none()
             },
-            
+            EditorMessage::Save => {
+                let content = self.content.text();
+
+                return Command::perform(save_file(self.path.clone(), content), EditorMessage::FileSaved);
+            },
+
             EditorMessage::FileSaved(result) => {
                 match result {
-                    Ok(_) => {},
+                    Ok(path) => {
+                        self.path = Some(path);
+                    },
                     Err(error) => {
                         self.error = Some(error);
                     }
@@ -105,26 +123,10 @@ impl Application for TextEditor {
                 Command::none()
             },
 
-            
-            EditorMessage::Open => {
-                return Command::perform(pick_file(), EditorMessage::FileOpened);
-            },
-            EditorMessage::Save => {
-                let path = self.opened_file.clone();
-                let content = self.content.text().to_string();
-                return Command::perform(save_file(path.unwrap(), content), EditorMessage::FileSaved);
-            },
-
-            EditorMessage::SaveAs => {
-                return Command::perform(save_file_as_dialog(self.content.text().to_string()), EditorMessage::FileSaved);
-            },
-
-            EditorMessage::New => {
-                self.content = text_editor::Content::new();
-                self.modified = false;
-                self.opened_file = None;
+            EditorMessage::ThemeChanged(theme) => {
+                self.theme = theme;
                 Command::none()
-            },
+            }
             
             
         }
@@ -134,18 +136,28 @@ impl Application for TextEditor {
     fn view(&self) -> Element<'_, EditorMessage> {
 
         let input = text_editor(&self.content)
-            .on_edit(EditorMessage::Edit);
+            .on_edit(EditorMessage::Edit)
+            .highlight::<Highlighter>(highlighter::Settings{
+                theme: self.theme,
+                extension: self.path.as_ref().and_then(|ext| ext.extension()?.to_str()).unwrap_or("txt").to_string(), 
+            }, |highlight, _theme|{
+                highlight.to_format()
+            });
 
         
         let controls = row![
-            button("New")
-                .on_press(EditorMessage::New),
-            button("Open")
-                .on_press(EditorMessage::Open),
-            button("Save")
-                .on_press(EditorMessage::Save),
-            button("Save As")
-                .on_press(EditorMessage::SaveAs)
+            // New button
+            action(icon(UIFonts::ContextIcons, '\u{E800}'), "Create a new file", EditorMessage::New),
+            // Save button
+            action(icon(UIFonts::ContextIcons, '\u{E801}'), "Save the current file", EditorMessage::Save),
+            // Open button
+            action(icon(UIFonts::ContextIcons, '\u{F115}'), "Open an existing file", EditorMessage::Open),
+            horizontal_space(Length::Fill),
+            pick_list(
+                &highlighter::Theme::ALL[..],
+                Some(self.theme),
+                EditorMessage::ThemeChanged
+            )
     
         ].spacing(10);
 
@@ -154,7 +166,7 @@ impl Application for TextEditor {
             let status = if let Some(error) = self.error.as_ref() {
                 text(format!("Error: {:?}", error))
             } else {
-                match self.opened_file.as_deref().and_then(Path::to_str) {
+                match self.path.as_deref().and_then(Path::to_str) {
                     Some(file) => text(format!("Editing: {}", file)),
                     None => text("New File"),
                 }
@@ -182,4 +194,16 @@ impl Application for TextEditor {
     fn theme(&self) -> Theme {
         Theme::Dark
     }
-}   
+}
+
+fn action<'a>(content: Element<'a, EditorMessage>, label: &str, on_press: EditorMessage) -> Element<'a, EditorMessage> {
+    tooltip(button(container(content)
+        .width(30)
+        .center_x()
+
+        )
+    .on_press(on_press)        
+    .padding([5,7]), label, tooltip::Position::FollowCursor)
+    .style(theme::Container::Box)
+    .into()
+}

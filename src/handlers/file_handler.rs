@@ -27,18 +27,6 @@ pub async fn pick_file() -> Result<(Arc<String>, Option<PathBuf>), Error> {
     Ok((loaded_file, path_buffer.into()))
 }
 
-pub async fn save_file_as_dialog(content: String) -> Result<(), Error> {
-    let file_saver_handle = rfd::AsyncFileDialog::new()
-        .set_title("Choose where to save the file")
-        .save_file()
-        .await
-        .ok_or(Error::DialogClosed)?;
-
-    save_file(file_saver_handle.path(), content).await?;
-
-    Ok(())
-}
-
 pub async fn load_file(path: impl AsRef<Path>) -> Result<Arc<String>, Error> {
     tokio::fs::read_to_string(path)
         .await
@@ -48,10 +36,24 @@ pub async fn load_file(path: impl AsRef<Path>) -> Result<Arc<String>, Error> {
 
 }
 
-pub async fn save_file(path: impl AsRef<Path>, content: String) -> Result<(), Error> {
-    tokio::fs::write(path, content)
+pub async fn save_file(path: Option<PathBuf>, content: String) -> Result<PathBuf, Error> {
+    let path = if let Some(path) = path {
+            path
+        } else {
+            rfd::AsyncFileDialog::new()
+                .set_title("Choose a location to save the file")
+                .save_file()
+                .await
+                .ok_or(Error::DialogClosed)?
+                .path()
+                .to_path_buf()
+        };
+
+    tokio::fs::write(&path, content)
         .await
         .map_err(|err| err.kind())
-        .map_err(Error::IO)
+        .map_err(Error::IO)?;
+
+    Ok(path)
 }
 
